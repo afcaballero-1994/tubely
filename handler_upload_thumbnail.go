@@ -1,10 +1,12 @@
 package main
 
 import (
-	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -40,7 +42,6 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, 500, "Could not parse", err)
 		return
 	}
-
 	f, h, err := r.FormFile("thumbnail")
 	if err != nil {
 		respondWithError(w, 500, "could not parse file", err)
@@ -48,22 +49,30 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	defer f.Close()
 	mediaType := h.Header.Get("Content-Type")
+	fileExtension := strings.TrimPrefix(mediaType, "image/");
 	
-	fdata, err := io.ReadAll(f)
-	if err != nil {
-		respondWithError(w, 500, "Could not read data", err)
-		return
-	}
 	
 	vi, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Not owner", err)
 		return
 	}
+
+	fpath := filepath.Join(cfg.assetsRoot, videoID.String() + "." + fileExtension)
+	nfile, err := os.Create(fpath)
+	if err != nil {
+		respondWithError(w, 500, "Could not create file", err)
+		return
+	}
+	defer nfile.Close()
+	nw, err := io.Copy(nfile, f)
+	if err != nil {
+		respondWithError(w, 500, "could not copy content", err)
+		return
+	}
+	fmt.Println(nw)
 	
-	image := base64.StdEncoding.EncodeToString(fdata)
-	thumurl := fmt.Sprintf("data:%s;base64,%s", mediaType, image)
-	
+	thumurl := "/" + fpath
 	vi.ThumbnailURL = &thumurl
 	
 	err = cfg.db.UpdateVideo(vi)
