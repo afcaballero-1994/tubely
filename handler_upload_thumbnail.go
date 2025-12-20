@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -50,6 +52,11 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	defer f.Close()
 	mediaType := h.Header.Get("Content-Type")
 	fileExtension := strings.TrimPrefix(mediaType, "image/");
+
+	if !strings.EqualFold("png", fileExtension) && !strings.EqualFold("jpeg", fileExtension){
+		respondWithError(w, 500, "Format not supported", nil);
+		return
+	}
 	
 	
 	vi, err := cfg.db.GetVideo(videoID)
@@ -57,8 +64,11 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusUnauthorized, "Not owner", err)
 		return
 	}
+	key := make([]byte, 32)
+	rand.Read(key)
+	filename := base64.RawURLEncoding.EncodeToString(key)
 
-	fpath := filepath.Join(cfg.assetsRoot, videoID.String() + "." + fileExtension)
+	fpath := filepath.Join(cfg.assetsRoot, filename + "." + fileExtension)
 	nfile, err := os.Create(fpath)
 	if err != nil {
 		respondWithError(w, 500, "Could not create file", err)
@@ -72,8 +82,9 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	fmt.Println(nw)
 	
-	thumurl := "/" + fpath
+	thumurl := "http://localhost:" + cfg.port + "/" + fpath
 	vi.ThumbnailURL = &thumurl
+	fmt.Println(thumurl)
 	
 	err = cfg.db.UpdateVideo(vi)
 	if err != nil {
